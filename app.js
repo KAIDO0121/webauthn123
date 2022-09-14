@@ -13,6 +13,37 @@ app.use(express.static('public'));
 app.use(cookieParser());
 app.use(bodyParser.json());
 
+app.get('/adminCredential', async (req, res) => {
+    try {
+        const credentials = await fido.getUserAndCredential(req.cookies.credentialId);
+        // TODO 
+        // if the credential is not admin, return error
+        res.json({
+            result: credentials
+        });
+    } catch (e) {
+        res.json({
+            error: e.message
+        })
+    }; 
+})
+
+app.get('/getAllUserCreds', async (req, res) => {
+    try {
+        if (!req.cookies.adminReq) {
+            throw new Error("Current user is not a admin user, authorized failed");
+        }
+        const credentials = await fido.getAllUserCreds(req.cookies.credentialId);
+        res.json({
+            result: credentials
+        });
+    } catch (e) {
+        res.json({
+            error: e.message
+        })
+    }; 
+});
+
 app.get('/credential', async (req, res) => {
     try {
         const credentials = await fido.getUserAndCredential(req.cookies.credentialId);
@@ -28,8 +59,7 @@ app.get('/credential', async (req, res) => {
 
 app.put('/credentials', async (req, res) => {
     try {
-        const uid = getUser(req);
-        const credential = await fido.makeCredential(uid, req.body);
+        const credential = await fido.makeCredential(req.cookies.randomUUID, req.body, req.cookies.adminReq);
         res.json({
             result: {
                 id: credential.id
@@ -57,9 +87,11 @@ app.delete('/credentials', async (req, res) => {
 
 app.get('/challenge', async (req, res) => {
     try {
-        const challenge = await fido.getChallenge(crypto.randomUUID());
+        const randomUUID = crypto.randomUUID()
+        const challenge = await fido.getChallenge(randomUUID);
         res.json({
-            result: challenge
+            result: challenge,
+            randomUUID,
         });
     } catch (e) {
         res.json({
@@ -68,11 +100,9 @@ app.get('/challenge', async (req, res) => {
     };
 });
 
-// should use credential id to find user in db
 app.put('/assertion', async (req, res) => {
     try {
-        const uid = getUser(req);
-        const credential = await fido.verifyAssertion(uid, req.body);
+        const credential = await fido.verifyAssertion(req.cookies.randomUUID, req.body, req.cookies.adminReq);
         res.json({
             result: credential
         });

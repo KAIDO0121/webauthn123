@@ -13,7 +13,8 @@ storage.Credentials = mongoose.model('Credential', new mongoose.Schema({
     metadata: {
         rpId: String,
         userName: String,
-        residentKey: String
+        residentKey: String,
+        isAdmin: Boolean,
     },
     creationData: {
         publicKey: String,

@@ -68,7 +68,6 @@
         });
 
         $("#signUpButton").click(() => {
-            // user name is valid, invoke the register dialog
             $("#signInPrompt").hide();
             $("#signedInBlock").show();
             Cookies.set('uid', $('#uid').val());
@@ -77,6 +76,8 @@
     
         $('#signOutButton').click(() => {
             Cookies.remove('uid');
+            Cookies.remove('credentialId')
+            Cookies.remove('randomUUID')
             window.location.reload()
         });
 
@@ -122,7 +123,7 @@
                 return createCredential(challenge)
             }).then(credential => {
                 id = credential.id;
-                Cookies.set('credentialId', id);
+                Cookies.set('credentialId', id)
                 return updateCredentials();
             }).then(() => {
                 createDialog.close();
@@ -152,7 +153,7 @@
                 return getAssertion(challenge)
             }).then(credential => {
                 id = credential.id;
-                Cookies.set('credentialId', id);
+                Cookies.set('credentialId', id)
                 return updateCredentials();
             }).then(() => {
                 getDialog.close();
@@ -204,6 +205,7 @@
             }
             else {
                 var challenge = stringToArrayBuffer(response.result);
+                Cookies.set('randomUUID', response.randomUUID)
                 return Promise.resolve(challenge);
             }
         });
@@ -345,7 +347,6 @@
                     residentKey: createCredentialOptions.authenticatorSelection.requireResidentKey
                 },
             };
-            localStorage.setItem('credentialId', credential.id)
             console.log("=== Attestation response ===");
             logVariable("id (base64)", credential.id);
             logVariable("clientDataJSON", credential.clientDataJSON);
@@ -370,21 +371,17 @@
     * @param {ArrayBuffer} challenge 
     * @return {any} server response object
     */
-    async function getAssertion (challenge) {
+    function getAssertion (challenge) {
         var largeBlobPresent = false;
 
         if (typeof(PublicKeyCredential) === "undefined")
             return Promise.reject("Error: WebAuthn APIs are not present on this device");
 
-        // should this challenge = the challenge during register ?
         var getAssertionOptions = {
             rpId: window.location.hostname,
             timeout: 90000,
             challenge: challenge,
-            allowCredentials: [{
-                type: "public-key",
-                id: Uint8Array.from(atob(localStorage.getItem('credentialId')), c => c.charCodeAt(0))
-            }],
+            allowCredentials: [],
             userVerification: undefined,
             extensions: {}
         };
@@ -404,10 +401,6 @@
         //         break;
         // }
 
-        // if ($('#get_allowCredentials').is(":checked")) {
-
-        //     getAssertionOptions.allowCredentials = allowCredentials;
-        // }
 
         if ($('#get_userVerification').val() !== "undefined") {
             getAssertionOptions.userVerification = $('#get_userVerification').val();
@@ -453,7 +446,8 @@
             logVariable("signature (base64)", credential.signature);
 
             return rest_put("/assertion", credential);
-        }).catch(err=>console.error(err))
+        })
+        .catch(err=>console.error(err))
         .then(response => {
             return response.json();
         }).then(response => {
@@ -494,7 +488,7 @@
     //#region UI Rendering
     
     /**
-     * UI: Updates the credential list
+     * UI: Updates the user data
      */
     function updateCredentials() {
         return rest_get(

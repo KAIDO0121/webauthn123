@@ -12,7 +12,7 @@
     /**
      * @type Array<Credential>
      */
-    var credentials = [];
+    var adminCred = [];
 
     //#region Event Handling
 
@@ -41,7 +41,7 @@
         if (!moreDialog.showModal) {
             dialogPolyfill.registerDialog(moreDialog);
         }
-
+        //  uid is now session id
         if (!Cookies.get("uid")) {
             //user is signed out
             Cookies.remove('uid');
@@ -53,41 +53,32 @@
         }
 
         $('body').removeClass("cloak");
-
+        Cookies.set('adminReq', true)
         // setTimeout(() => {
         //   updateCredentials().catch((e) => toast("ERROR: " + e));
         // }, 100);
 
+        // get attestion
         $("#signInButton").click(() => {
-          if (!validateUserName()) return;
           $("#signInPrompt").hide();
           $("#signedInBlock").show();
-          Cookies.set("uid", $("#uid").val());
           updateCredentials()
             .then(res => $("#getButton").click())
             .catch((e) => toast("ERROR: " + e));
-          
         });
 
         $("#signUpButton").click(() => {
-            if (!validateUserName()) return;
-            // user name is valid, invoke the register dialog
             $("#signInPrompt").hide();
             $("#signedInBlock").show();
-            Cookies.set("uid", $("#uid").val());
+            Cookies.set('uid', $('#uid').val());
             $("#createButton").click();
-          });
+        });
     
-        function validateUserName() {
-            if (!$('#uid').val() || $('#uid').val().length < 3 || $('#uid').val().includes(" ")) {
-                alert("Invalid username");
-                return false;
-            }
-            return true
-        }
-
         $('#signOutButton').click(() => {
             Cookies.remove('uid');
+            Cookies.remove('credentialId')
+            Cookies.remove('randomUUID')
+            Cookies.remove('adminReq')
             window.location.reload()
         });
 
@@ -128,10 +119,12 @@
 
             disableControls();
 
+            // server use uuid generates challenge
             getChallenge().then(challenge => {
                 return createCredential(challenge)
             }).then(credential => {
                 id = credential.id;
+                Cookies.set('credentialId', id)
                 return updateCredentials();
             }).then(() => {
                 createDialog.close();
@@ -161,6 +154,7 @@
                 return getAssertion(challenge)
             }).then(credential => {
                 id = credential.id;
+                Cookies.set('credentialId', id)
                 return updateCredentials();
             }).then(() => {
                 getDialog.close();
@@ -212,6 +206,7 @@
             }
             else {
                 var challenge = stringToArrayBuffer(response.result);
+                Cookies.set('randomUUID', response.randomUUID)
                 return Promise.resolve(challenge);
             }
         });
@@ -247,60 +242,6 @@
             extensions: {}
         };
 
-        // switch ($('#create_rpInfo').val()) {
-        //     case "normal":
-        //         createCredentialOptions.rp.id = window.location.hostname;
-        //         break;
-        //     case "suffix":
-        //         createCredentialOptions.rp.id = "suffix." + window.location.hostname;
-        //         break;
-        //     case "securityerror":
-        //         createCredentialOptions.rp.id = "foo.com";
-        //         break;
-        //     case "emptyrpid":
-        //         createCredentialOptions.rp.id = "";
-        //         break;
-        //     case "emptyrpname":
-        //         createCredentialOptions.rp.name = undefined;
-        //         break;
-        //     case "emptyrpicon":
-        //         createCredentialOptions.rp.icon = undefined;
-        //     case "undefined":
-        //     default:
-        //         break;
-        // }
-
-        // switch ($('#create_userInfo').val()) {
-        //     case "empty":
-        //         createCredentialOptions.user.displayName = "";
-        //         createCredentialOptions.user.name = "";
-        //         break;
-        //     case "alice":
-        //         createCredentialOptions.user.displayName = "Alice Doe";
-        //         createCredentialOptions.user.name = "alice@example.com";
-        //         break;
-        //     case "stella":
-        //         createCredentialOptions.user.displayName = "Stella Ipsum";
-        //         createCredentialOptions.user.name = "stella@example.com";
-        //         break;
-        //     case "john":
-        //         createCredentialOptions.user.displayName = "John Smith";
-        //         createCredentialOptions.user.name = "john@example.com";
-        //         break;
-        //     case "mike":
-        //         createCredentialOptions.user.displayName = "Mike Marlowe";
-        //         createCredentialOptions.user.name = "mike@example.com";
-        //         break;
-        //     case "bob":
-        //     default:
-        //         createCredentialOptions.user.displayName = "Bob Smith";
-        //         createCredentialOptions.user.name = "bob@example.com";
-        //         break;
-        // }
-
-        // don't do this in production code. user.id should not contain PII
-        // createCredentialOptions.user.id = stringToArrayBuffer(createCredentialOptions.user.name);
-
         if ($('#create_ES256').is(":checked")) {
             createCredentialOptions.pubKeyCredParams.push({
                 type: "public-key",
@@ -330,17 +271,6 @@
                 type: "public-key",
                 alg: -8
             });
-        }
-
-        if ($('#create_excludeCredentials').is(":checked")) {
-            var excludeCredentials = credentials.map(cred => {
-                return {
-                    type: "public-key",
-                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-                };
-            });
-
-            createCredentialOptions.excludeCredentials = excludeCredentials;
         }
 
         if ($('#create_authenticatorAttachment').val() !== "undefined") {
@@ -392,6 +322,7 @@
             createCredentialOptions.extensions.largeBlob = {};
             createCredentialOptions.extensions.largeBlob.support = $('#create_largeBlob').val();
         }
+        
 
         return navigator.credentials.create({
             publicKey: createCredentialOptions
@@ -407,12 +338,12 @@
                     residentKey: createCredentialOptions.authenticatorSelection.requireResidentKey
                 },
             };
-
+            // suppose the we can recieve the isAdmin here
             console.log("=== Attestation response ===");
-            logVariable("id (base64)", credential.id);
-            logVariable("clientDataJSON", credential.clientDataJSON);
-            logVariable("attestationObject (base64)", credential.attestationObject);
-
+            // logVariable("id (base64)", credential.id);
+            // logVariable("clientDataJSON", credential.clientDataJSON);
+            // logVariable("attestationObject (base64)", credential.attestationObject);
+            // console.log(attestation.response.getAuthenticatorData())
             return rest_put("/credentials", credential);
         }).then(response => {
             return response.json();
@@ -425,12 +356,14 @@
         });
     }
 
+    // 
+
     /**
     * Calls the .get() API and sends result to server to verify
     * @param {ArrayBuffer} challenge 
     * @return {any} server response object
     */
-    function getAssertion(challenge) {
+    function getAssertion (challenge) {
         var largeBlobPresent = false;
 
         if (typeof(PublicKeyCredential) === "undefined")
@@ -460,16 +393,6 @@
         //         break;
         // }
 
-        if ($('#get_allowCredentials').is(":checked")) {
-            var allowCredentials = credentials.map(cred => {
-                return {
-                    type: "public-key",
-                    id: Uint8Array.from(atob(cred.id), c => c.charCodeAt(0))
-                };
-            });
-
-            getAssertionOptions.allowCredentials = allowCredentials;
-        }
 
         if ($('#get_userVerification').val() !== "undefined") {
             getAssertionOptions.userVerification = $('#get_userVerification').val();
@@ -508,14 +431,15 @@
             };
 
             console.log("=== Assertion response ===");
-            logVariable("id (base64)", credential.id);
+            logVariable("id (base64)", credential.id); // rawId
             logVariable("userHandle (base64)", credential.userHandle);
             logVariable("authenticatorData (base64)", credential.authenticatorData);
             logVariable("clientDataJSON", credential.clientDataJSON);
             logVariable("signature (base64)", credential.signature);
 
             return rest_put("/assertion", credential);
-        }).catch(err=>console.error(err))
+        })
+        .catch(err=>console.error(err))
         .then(response => {
             return response.json();
         }).then(response => {
@@ -556,9 +480,12 @@
     //#region UI Rendering
     
     /**
-     * UI: Updates the credential list
+     * UI: Updates the user data
      */
-    function updateCredentials() {
+    async function updateCredentials() {
+        const res = await fetch("/getAllUserCreds")
+        const { result } = await res.json() 
+        
         return rest_get(
             "/credential"
         ).then((response) => {
@@ -567,8 +494,8 @@
             if (response.error) {
                 return Promise.reject(response.error);
             } else {
-                credentials = response.result;
-                renderCredentialList();
+                adminCred = response.result;
+                renderCredentialList({ allCred: result });
                 return Promise.resolve({});
             }
         });
@@ -577,9 +504,11 @@
     /**
      * UI: Renders the credential list
      */
-    function renderCredentialList() {
+    function renderCredentialList({ allCred }) {
+
         $("#credentialsContainer").html("");
-        credentials.forEach(cred => {
+        
+        [...adminCred, ...allCred].forEach(cred => {
             renderCredential(cred);
         });
 
@@ -657,7 +586,7 @@
      * @param {string} id id of credental to display 
      */
     function showCreationData(id) {
-        var credential = credentials.find(c => c.id === id);
+        var credential = adminCred.find(c => c.id === id);
 
         $("#creationData_attestationStatementHex").text(credential.creationData.attestationStatementHex);
         $("#creationData_attestationStatementChainJSON").text(credential.creationData.attestationStatementChainJSON);
@@ -676,7 +605,7 @@
      * @param {string} id id of credental to display 
      */
     function showAuthenticationData(id) {
-        var credential = credentials.find(c => c.id === id);
+        var credential = adminCred.find(c => c.id === id);
 
         $("#authenticationData_userHandleHex").text(credential.authenticationData.userHandleHex);
         $("#authenticationData_authenticatorDataHex").text(credential.authenticationData.authenticatorDataHex);

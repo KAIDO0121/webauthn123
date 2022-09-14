@@ -27,9 +27,9 @@ const fido = {};
  * Internally, this challenge is a JWT with a timeout.
  * @returns {string} challenge
  */
-fido.getChallenge = (uid) => {
+fido.getChallenge = (randomUUID) => {
     return jwt.sign({}, jwt_secret, {
-        subject: uid, 
+        subject: randomUUID, 
         expiresIn: 120 * 1000
     });
 };
@@ -39,7 +39,7 @@ fido.getChallenge = (uid) => {
  * @param {String} uid user id
  * @param {EncodedAttestationResponse} attestation AuthenticatorAttestationResponse received from client
  */
-fido.makeCredential = async (uid, attestation) => {
+fido.makeCredential = async (uid, attestation, adminReq) => {
     //https://w3c.github.io/webauthn/#registering-a-new-credential
 
     if (!attestation.id)
@@ -90,6 +90,10 @@ fido.makeCredential = async (uid, attestation) => {
         throw new Error("User Present bit was not set.");
     }
 
+    if (!authenticatorData.extensionDataHex && adminReq) {
+        throw new Error("Current user is not a admin user, log in failed")
+    }
+
     //Ignore step 11-12 since this is a test site
 
     //Step 13-17: Attestation
@@ -103,7 +107,8 @@ fido.makeCredential = async (uid, attestation) => {
         metadata: {
             rpId: defaultTo(attestation.metadata.rpId, hostname),
             userName: attestation.metadata.userName,
-            residentKey: !!attestation.metadata.residentKey
+            residentKey: !!attestation.metadata.residentKey,
+            isAdmin: !!authenticatorData.extensionDataHex,
         },
         creationData: {
             publicKeySummary: authenticatorData.attestedCredentialData.publicKey.kty,
@@ -139,7 +144,7 @@ fido.makeCredential = async (uid, attestation) => {
  * @param {EncodedAssertionResponse} assertion AuthenticatorAssertionResponse received from client
  * @return {Promise<Credential>} credential object that the assertion verified
  */
-fido.verifyAssertion = async (uid, assertion) => {
+fido.verifyAssertion = async (uid, assertion, adminReq) => {
     // https://w3c.github.io/webauthn/#verifying-assertion
 
     // Step 1 and 2 are skipped because this is a sample app
@@ -181,6 +186,12 @@ fido.verifyAssertion = async (uid, assertion) => {
     //Step 12: Verify that the User Present bit of the flags in authData is set
     if ((authenticatorData.flags & 0b00000001) == 0) {
         throw new Error("User Present bit was not set.");
+    }
+    // credBlob = true -> admin
+    // credBlob = false -> not admin
+    console.log(authenticatorData.extensionDataHex)
+    if (!authenticatorData.extensionDataHex && adminReq) {
+        throw new Error("Current user is not a admin user, log in failed")
     }
 
     //Step 13-14 are skipped because this is a test site
@@ -274,6 +285,12 @@ fido.getUserAndCredential = async (credentialId) => {
     return user;
 };
 
+fido.getAllUserCreds = async () => {
+    const users = await storage.Credentials.find().lean();
+    return users;
+};
+
+
 fido.deleteCredential = async (uid, id) => {
     await storage.Credentials.remove({ uid: uid, id: id });
 };
@@ -358,7 +375,7 @@ function parseAuthenticatorData(authData) {
             } else {
                 extensionDataCbor = cbor.decodeFirstSync(authData.slice(37, authData.length));
             }
-
+            
             authenticatorData.extensionDataHex = cbor.encode(extensionDataCbor).toString('hex').toUpperCase();
         }
         else
